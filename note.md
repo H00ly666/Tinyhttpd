@@ -11,6 +11,11 @@
     - 客户端地址结构：`client_name`
     - 线程ID：`newthread`
 * **线程**：每个线程处理一个新的连接
+    - 数据接收缓冲器区：`buf[1024]`
+    - html方法：`method[255]`
+    - url：`url[255]`
+    - 路径：`path`
+    - GET方法额外参数：`query_string`
 
 ### 2）函数
 
@@ -21,6 +26,17 @@
     - [accept_request](#accept_request函数
 )：线程执行的函数。处理客户端的请求
         + [get_line](#get_line函数)：从已连接套接字描述符读取一行数据
+        + 如果是POST方法：设置`cgi`为`1`，`query_string`指向`NULL`
+        + 如果是GET方法：
+            * 1）如果没有额外参数（url中不包含`'?'`）：设置`cgi`为`1`，`query_string`指向额外参数（`'?'`之后）
+            * 2）如果含有额外参数（url中包含`'?'`）
+        + 通过`path`获取文件状态
+            * 1）如果文件不存在，读取html请求剩余数据，然后调用not_found处理
+            * 2）如果文件存在
+                - 如果文件具有可执行权限（设置了`S_IXUSR`或`S_IXGRP`或`S_IXOTH`标志，[详见](https://github.com/arkingc/note/blob/master/%E6%93%8D%E4%BD%9C%E7%B3%BB%E7%BB%9F/UNIX%E7%8E%AF%E5%A2%83%E9%AB%98%E7%BA%A7%E7%BC%96%E7%A8%8B.md#4%E6%96%87%E4%BB%B6%E8%AE%BF%E9%97%AE%E6%9D%83%E9%99%90)），那么将`cgi`置为`1`
+                - 根据`cgi`的值调用不同函数处理
+                    + `0`：调用serve_file
+                    + `1`：调用execute_cgi
 * **错误处理**
     - [error_die](#errordie函数)：内部调用**perror**和**exit**
 
