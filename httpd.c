@@ -54,20 +54,22 @@ void unimplemented(int);
 /**********************************************************************/
 void accept_request(void *arg)
 {
-    int client = (intptr_t)arg;
+    int client = (intptr_t)arg;  //传给线程的参数是已连接套接字描述符
     char buf[1024];
-    size_t numchars;
-    char method[255];
-    char url[255];
-    char path[512];
+    size_t numchars;             //读取到的字节数据
+    char method[255];            //方法
+    char url[255];               //地址
+    char path[512];              //路径
     size_t i, j;
     struct stat st;
     int cgi = 0;      /* becomes true if server decides this is a CGI
                        * program */
     char *query_string = NULL;
 
+    //从已连接套接字描述符读取一行数据
     numchars = get_line(client, buf, sizeof(buf));
-    i = 0; j = 0;
+    i = 0; j = 0;   //i用于遍历method、url、path数组，j用于遍历buf
+    //从buf中抽取方法数据，保存到method中
     while (!ISspace(buf[i]) && (i < sizeof(method) - 1))
     {
         method[i] = buf[i];
@@ -76,18 +78,23 @@ void accept_request(void *arg)
     j=i;
     method[i] = '\0';
 
+    //strcasecmp：忽略大小写的字符串比较
+    //如果既不是GET方法，也不是POST方法，调用unimplemented函数处理
     if (strcasecmp(method, "GET") && strcasecmp(method, "POST"))
     {
         unimplemented(client);
         return;
     }
 
+    //如果是POST方法、则将cgi设置为1
     if (strcasecmp(method, "POST") == 0)
         cgi = 1;
 
     i = 0;
+    //跳过方法数据后的空格
     while (ISspace(buf[j]) && (j < numchars))
         j++;
+    //从buf中抽取url数据
     while (!ISspace(buf[j]) && (i < sizeof(url) - 1) && (j < numchars))
     {
         url[i] = buf[j];
@@ -95,9 +102,12 @@ void accept_request(void *arg)
     }
     url[i] = '\0';
 
+    //如果method是GET，那么需要在获取url后处理
     if (strcasecmp(method, "GET") == 0)
     {
         query_string = url;
+        //下面的处理主要是判断URL中有没有包含'?'，如果包含了'?'，需要将cgi设置为1
+        //然后将url从'?'处截断，并使query_string指向'?'之后
         while ((*query_string != '?') && (*query_string != '\0'))
             query_string++;
         if (*query_string == '?')
@@ -108,28 +118,36 @@ void accept_request(void *arg)
         }
     }
 
+    //path："htdocs"+url 
     sprintf(path, "htdocs%s", url);
+    //如果url末尾为'/'，表示是个目录，那么更新path："htdocs"+url+"index.html"
     if (path[strlen(path) - 1] == '/')
         strcat(path, "index.html");
-    if (stat(path, &st) == -1) {
+    //获取文件的状态，保存到st中
+    if (stat(path, &st) == -1) {//如果文件状态获取失败（文件不存在）
+        //读取客户html请求剩余的数据，然后调用not_found向客户端返回文件不存在错误
         while ((numchars > 0) && strcmp("\n", buf))  /* read & discard headers */
             numchars = get_line(client, buf, sizeof(buf));
         not_found(client);
     }
-    else
+    else//如果文件存在
     {
+        //如果文件是个目录，那么path："htdocs"+url+"/index.html"
         if ((st.st_mode & S_IFMT) == S_IFDIR)
             strcat(path, "/index.html");
         if ((st.st_mode & S_IXUSR) ||
                 (st.st_mode & S_IXGRP) ||
                 (st.st_mode & S_IXOTH)    )
             cgi = 1;
+        //如果没设置cgi，那么调用serve_file进行响应
+        //如果设置了cgi，那么调用execute_cgi进行响应
         if (!cgi)
             serve_file(client, path);
         else
             execute_cgi(client, path, method, query_string);
     }
 
+    //处理完客户端的html请求后，关闭已连接套接字描述符（关闭TCP连接）
     close(client);
 }
 
@@ -313,18 +331,22 @@ void execute_cgi(int client, const char *path,
 /**********************************************************************/
 int get_line(int sock, char *buf, int size)
 {
-    int i = 0;
-    char c = '\0';
+    int i = 0;       //buf中保存读取到的字符的起始下标
+    char c = '\0';   //用以保存读取到的每个字符
     int n;
 
     while ((i < size - 1) && (c != '\n'))
     {
+        //每次读入一个字符，保存在c中
         n = recv(sock, &c, 1, 0);
         /* DEBUG printf("%02X\n", c); */
         if (n > 0)
         {
             if (c == '\r')
             {
+                //MSG_PEEK允许我们查看已经可读的数据，并且系统不在recv返回后丢弃这些数据
+                //如果读到'\r'，有些系统是以"\r\n"为换行，有些是以"\r"为换行
+                //这里通过查看下一个字符是不是'\n'来处理"\r\n"的情况
                 n = recv(sock, &c, 1, MSG_PEEK);
                 /* DEBUG printf("%02X\n", c); */
                 if ((n > 0) && (c == '\n'))
@@ -332,10 +354,10 @@ int get_line(int sock, char *buf, int size)
                 else
                     c = '\n';
             }
-            buf[i] = c;
-            i++;
+            buf[i] = c; //还没读到行尾，则将读到的字符存入buf
+            i++;        //更新起始下标
         }
-        else
+        else //下面语句会导致循环终止
             c = '\n';
     }
     buf[i] = '\0';
