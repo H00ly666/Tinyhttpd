@@ -37,6 +37,7 @@
                 - 根据`cgi`的值调用不同函数处理
                     + `0`：调用serve_file
                     + `1`：调用execute_cgi
+        + 每次处理完一个html请求就关闭已连接套接字描述符（即关闭TCP连接）
 * **错误处理**
     - [error_die](#errordie函数)：内部调用**perror**和**exit**
 
